@@ -81,7 +81,7 @@ class TextStructurizer:
 
     def split_by_sections(self, markdown_text: str) -> List[str]:
         """
-        根据二级标题（##）分割文本，并为每个部分添加其所属的层级标题
+        根据标题分割文本，并为每个部分添加其所属的层级标题（支持1-6级标题）
         
         Args:
             markdown_text: markdown格式的文本
@@ -91,12 +91,14 @@ class TextStructurizer:
         """
         self.logger.info("开始按章节分割文本...")
         
-        # 存储所有层级的标题
+        # 存储所有层级的标题（1-6级）
         current_titles = {
             1: None,  # 一级标题 #
             2: None,  # 二级标题 ##
             3: None,  # 三级标题 ###
-            4: None   # 四级标题 ####
+            4: None,  # 四级标题 ####
+            5: None,  # 五级标题 #####
+            6: None   # 六级标题 ######
         }
         
         sections = []
@@ -105,8 +107,8 @@ class TextStructurizer:
         
         for line in lines:
             if line.strip():  # 忽略空行
-                # 检查是否是标题行
-                header_match = re.match(r'^(#{1,4})\s+(.+)$', line)
+                # 检查是否是标题行（支持1-6级标题）
+                header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
                 if header_match:
                     level = len(header_match.group(1))
                     title = line
@@ -114,12 +116,15 @@ class TextStructurizer:
                     # 更新当前层级的标题
                     current_titles[level] = title
                     
-                    # 如果是二级标题，说明开始新的段落
-                    if level == 2 and current_section:
-                        # 组装完整的段落（包含所有相关标题）
+                    # 如果已经有内容，保存当前段落
+                    if current_section:
                         full_section = self._build_section_with_titles(current_titles, current_section)
                         sections.append(full_section)
                         current_section = []
+                    
+                    # 清除所有下级标题
+                    for i in range(level + 1, 7):
+                        current_titles[i] = None
                 
                 # 将当前行添加到当前段落
                 current_section.append(line)
@@ -143,7 +148,7 @@ class TextStructurizer:
         """
         # 收集所有相关的标题
         relevant_titles = []
-        for level in range(1, 5):  # 从1级到4级标题
+        for level in range(1, 7):  # 从1级到6级标题
             if current_titles[level]:
                 relevant_titles.append(current_titles[level])
         
@@ -152,7 +157,7 @@ class TextStructurizer:
 
     async def process_chunk(self, chunk: str, is_first: bool = False, previous_structure: str = None) -> str:
         """
-        处理单个文本块
+        处理单个文本块，将其整理为带标题的结构化文本
         
         Args:
             chunk: 文本块
@@ -160,30 +165,26 @@ class TextStructurizer:
             previous_structure: 前一个块的结构（标题层级）
         """
         try:
-            system_prompt = """你是一个专业的文档结构化助手。你的任务是：
-            1. 保持原文的所有重要信息
-            2. 合理组织文档结构
-            3. 确保不同块之间的内容连贯
-            """
+            system_prompt = "你是一个专业的文档结构化助手，善于将文本整理为清晰的层级结构。"
             
             if is_first:
                 self.logger.info("处理第一个文本块，创建文档结构...")
                 prompt = f"""
-                请将以下文本整理为结构化的README格式：
+                请将以下文本整理为结构化的格式，使用markdown标题：
 
                 {chunk}
 
                 要求：
-                1. 保留所有重要信息，不要删除任何实质内容
-                2. 根据内容合理划分标题层级
-                3. 使用markdown格式
-                4. 多使用多级标题组织内容
-                5. 确保输出内容的完整性
+                1. 分析文本内容，提取关键主题
+                2. 创建合适的标题层级结构
+                3. 使用markdown标题格式（#、##、###等）
+                4. 不要修改原文任何内容
+                5. 确保内容的逻辑性和连贯性
                 """
             else:
                 self.logger.info("处理后续文本块，保持结构一致...")
                 prompt = f"""
-                这是长文本的后续部分。前文的结构如下：
+                请接续前面的任务，继续整理文本格式，这是长文本的后续部分。前文的标题结构如下：
 
                 {previous_structure}
 
@@ -192,14 +193,15 @@ class TextStructurizer:
                 {chunk}
 
                 要求：
-                1. 保留所有重要信息，不要删除任何实质内容
-                2. 参考前文的标题层级组织新内容
-                3. 确保与前文结构保持一致
-                4. 保持内容的连贯性
+                1. 参考前文的标题结构
+                2. 保持标题层级的一致性
+                3. 使用markdown标题格式
+                4. 不要修改原文任何内容
+                5. 确保与前文的连贯性
                 """
 
             response = await self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
