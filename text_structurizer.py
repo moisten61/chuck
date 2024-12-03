@@ -162,7 +162,7 @@ class TextStructurizer:
         Args:
             chunk: 文本块
             is_first: 是否是第一个块
-            previous_structure: 前一个块的结构（标题层级）
+            previous_structure: 所有之前块的标题结构
         """
         try:
             system_prompt = "你是一个专业的文档结构化助手，善于将文本整理为清晰的层级结构。"
@@ -184,20 +184,22 @@ class TextStructurizer:
             else:
                 self.logger.info("处理后续文本块，保持结构一致...")
                 prompt = f"""
-                请接续前面的任务，继续整理文本格式，这是长文本的后续部分。前文的标题结构如下：
+                请接续前面的任务，继续整理文本格式，这是长文本的后续部分。
+                前面所有块的标题结构如下：
 
                 {previous_structure}
 
-                请处理以下内容，保持与前文结构一致：
+                请处理以下内容，参考前文的整体结构：
 
                 {chunk}
 
                 要求：
-                1. 参考前文的标题结构
+                1. 参考前文的整体标题结构
                 2. 保持标题层级的一致性
                 3. 使用markdown标题格式
                 4. 不要修改原文任何内容
                 5. 确保与前文的连贯性
+                6. 避免重复已有的标题层级
                 """
 
             response = await self.client.chat.completions.create(
@@ -233,7 +235,7 @@ class TextStructurizer:
             self.logger.info(f"文本已分割为 {len(chunks)} 个块")
             
             results = []
-            previous_structure = None
+            all_previous_structures = []  # 存储所有之前块的结构
             
             # 使用tqdm创建进度条
             for i in tqdm(range(len(chunks)), desc="处理文本块"):
@@ -241,11 +243,13 @@ class TextStructurizer:
                 result = await self.process_chunk(
                     chunk, 
                     is_first=(i == 0),
-                    previous_structure=previous_structure
+                    previous_structure="\n".join(all_previous_structures)  # 传递所有之前的结构
                 )
                 results.append(result)
-                # 更新前文结构
-                previous_structure = self.extract_structure(result)
+                # 提取并保存当前块的结构
+                current_structure = self.extract_structure(result)
+                if current_structure:
+                    all_previous_structures.append(current_structure)
                 
             if len(results) == 1:
                 self.logger.info("文本处理完成")

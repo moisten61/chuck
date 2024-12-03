@@ -47,7 +47,7 @@ async def main():
         # 初始化处理器
         structurizer = TextStructurizer(api_key)
         splitter = SectionSplitter()
-        
+
         # 获取用户输入
         logger.info("等待用户输入文本...")
         print("请输入需要处理的文本（输入'END'结束）：")
