@@ -170,7 +170,7 @@ class TextStructurizer:
             if is_first:
                 self.logger.info("处理第一个文本块，创建文档结构...")
                 prompt = f"""
-                请将以下文本整理为结构化的格式，使用markdown标题：
+                请将以下文本整理为结构化的格式，使用markdown标题��
 
                 {chunk}
 
@@ -235,21 +235,25 @@ class TextStructurizer:
             self.logger.info(f"文本已分割为 {len(chunks)} 个块")
             
             results = []
-            all_previous_structures = []  # 存储所有之前块的结构
+            previous_titles = set()  # 使用集合存储已有的标题，避免重复
             
             # 使用tqdm创建进度条
             for i in tqdm(range(len(chunks)), desc="处理文本块"):
                 chunk = chunks[i]
+                # 构建前文结构字符串
+                previous_structure = "\n".join(sorted(previous_titles)) if previous_titles else ""
+                
                 result = await self.process_chunk(
                     chunk, 
                     is_first=(i == 0),
-                    previous_structure="\n".join(all_previous_structures)  # 传递所有之前的结构
+                    previous_structure=previous_structure
                 )
                 results.append(result)
-                # 提取并保存当前块的结构
-                current_structure = self.extract_structure(result)
-                if current_structure:
-                    all_previous_structures.append(current_structure)
+                
+                # 提取当前块的标题并添加到已有标题集合中
+                current_titles = set(line.strip() for line in result.split('\n') 
+                                   if line.strip().startswith('#'))
+                previous_titles.update(current_titles)
                 
             if len(results) == 1:
                 self.logger.info("文本处理完成")
